@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from models import User as UserModel, Transaction as TransactionModel
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
@@ -36,7 +36,7 @@ def read_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(UserModel).filter(UserModel.id == user_id).first()
     if user:
         return user
-    return {"error": "User not found"}
+    raise HTTPException(status_code=404, detail="User not found")
 
 @app.post("/users/")
 def create_user(user: UserSchema, db: Session = Depends(get_db)):
@@ -47,14 +47,6 @@ def create_user(user: UserSchema, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return db_user
 
-# PUT /users/{user_id}
-# Request Body:
-# {
-#   "username": "string",
-#   "phone_number": "string"
-# }
-# Response: 200 OK
-
 @app.put("/users/{user_id}")
 def update_user(user_id: int, user: UserSchema, db: Session = Depends(get_db)):
     db_user = db.query(UserModel).filter(UserModel.id == user_id).first()
@@ -64,7 +56,7 @@ def update_user(user_id: int, user: UserSchema, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_user)
         return db_user
-    return {"error": "User not found"}
+    raise HTTPException(status_code=404, detail="User not found")
 
 @app.get("/wallet/{user_id}/balance")
 def get_wallet_balance(user_id: int, db: Session = Depends(get_db)):
@@ -98,12 +90,12 @@ def add_money_to_wallet(user_id: int, transaction: AddMoneyToWallet, db: Session
             "new_balance": user.balance,
             "transaction_type": "CREDIT"
         }
-    return {"error": "User not found"}
+    raise HTTPException(status_code=404, detail="User not found")
 
 @app.post("/wallet/{user_id}/withdraw")
 def withdraw_money_from_wallet(user_id: int, transaction: WithdrawMoneyFromWallet, db: Session = Depends(get_db)):
     user = db.query(UserModel).filter(UserModel.id == user_id).first()
-    if user:
+    if user and user.balance >= transaction.amount: # Balance cannot go negative (validate before debit operations)
         user.balance -= transaction.amount
         db.commit()
         db.refresh(user)
@@ -116,6 +108,9 @@ def withdraw_money_from_wallet(user_id: int, transaction: WithdrawMoneyFromWalle
         db.add(db_transaction)
         db.commit()
 
+    if user.balance < transaction.amount:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
+
         return {
             "transaction_id": generate_transaction_id(db),
             "user_id": user_id,
@@ -123,15 +118,7 @@ def withdraw_money_from_wallet(user_id: int, transaction: WithdrawMoneyFromWalle
             "new_balance": user.balance,
             "transaction_type": "DEBIT"
         }
-    return {"error": "User not found"}
-
-# @app.post("/transactions")
-# def create_transaction(transaction: TransactionSchema, db: Session = Depends(get_db)):
-#     db_transaction = TransactionModel(**transaction.dict())
-#     db.add(db_transaction)
-#     db.commit()
-#     db.refresh(db_transaction)
-#     return db_transaction
+    raise HTTPException(status_code=404, detail="User not found")
 
 @app.post("/transfer")
 def transfer_money(sender_user_id: int, recipient_user_id: int, amount: float, description: str | None = None, db: Session = Depends(get_db)):
@@ -139,9 +126,9 @@ def transfer_money(sender_user_id: int, recipient_user_id: int, amount: float, d
     recipient = db.query(UserModel).filter(UserModel.id == recipient_user_id).first()
 
     if not sender:
-        return {"error": "Sender not found"}, 404
+        raise HTTPException(status_code=404, detail="Sender not found")
     if not recipient:
-        return {"error": "Recipient not found"}, 404
+        raise HTTPException(status_code=404, detail="Recipient not found")
 
     if sender.balance < amount:
         return {
@@ -187,21 +174,9 @@ def transfer_money(sender_user_id: int, recipient_user_id: int, amount: float, d
         "status": "completed"
     }
 
-# GET /transfer/{transfer_id}
-# Response: 200 OK
-# {
-#   "transfer_id": "unique_transfer_id",
-#   "sender_user_id": 1,
-#   "recipient_user_id": 2,
-#   "amount": 25.00,
-#   "description": "Payment for dinner",
-#   "status": "completed",
-#   "created_at": "2024-01-01T12:30:00Z"
-# }
-
 @app.get("/transfer/{transfer_id}")
 def get_transfer_details(transfer_id: str, db: Session = Depends(get_db)):
     transfer = db.query(TransactionModel).filter(TransactionModel.id == transfer_id).first()
     if not transfer:
-        return {"error": "Transfer not found"}, 404
+        raise HTTPException(status_code=404, detail="Transfer not found")
     return transfer
