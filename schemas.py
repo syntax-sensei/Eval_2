@@ -28,3 +28,13 @@ class AddMoneyToWallet(BaseModel):
 class WithdrawMoneyFromWallet(BaseModel):
     user_id: int
     amount: float
+
+
+class Transfer(BaseModel):
+    transfer_id: str
+    sender_user_id: int
+    recipient_user_id: int
+    amount: float
+    description: str | None
+    status: str
+    created_at: str
