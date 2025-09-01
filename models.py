@@ -15,7 +15,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # transactions_info = relationship("Transaction", back_populates="user_info")
+    # One user can have many transactions
+    transactions = relationship("Transaction", foreign_keys="Transaction.user_id", back_populates="user")
+    
+    # One user can receive many transactions
+    received_transactions = relationship("Transaction", foreign_keys="Transaction.recipient_user_id", back_populates="recipient")
 
 
 class Transaction(Base):
@@ -34,7 +38,14 @@ class Transaction(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # user_info = relationship("User", back_populates="transactions_info")
+    # Many transactions belong to one user (the sender)
+    user = relationship("User", foreign_keys=[user_id], back_populates="transactions")
+    
+    # Many transactions can have one recipient user
+    recipient = relationship("User", foreign_keys=[recipient_user_id], back_populates="received_transactions")
+    
+    # Self-referential relationship for reference transactions
+    reference_transaction = relationship("Transaction", remote_side=[id])
 
 
 
